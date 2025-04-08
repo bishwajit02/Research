@@ -56,30 +56,45 @@ def filter_csv():
     if cleaned_df is None:
         messagebox.showerror("Error", "No cleaned data available! Click 'Clear CSV' first.")
         return
-    
-    # Remove rows with null or NaN values in specific columns
-    cleaned_df.dropna(subset=["s_ra", "s_dec", "calib_level", "t_min", "t_exptime"], inplace=True)
-    
-    if "target_classification" in cleaned_df.columns:
-        # Clean target_classification values
-        cleaned_df["target_classification"] = cleaned_df["target_classification"].astype(str).str.replace(r"[; ]+", "-", regex=True)
+
+    try:
+        # Ensure required columns are present
+        columns_in_file = set(cleaned_df.columns)
+        required_columns = set(important_features_type1)
+        missing_columns = required_columns - columns_in_file
+
+        if missing_columns:
+            messagebox.showerror("Error", f"Missing columns: {', '.join(missing_columns)}")
+            return
+
+        df = cleaned_df.copy()
         
-        # Replace 'nan' string values with empty and classify as unlabeled
-        cleaned_df.loc[cleaned_df["target_classification"].str.lower() == "nan", "target_classification"] = ""
+        # If target_classification doesn't exist, create it and mark as unlabeled
+        if "target_classification" not in df.columns:
+            df["target_classification"] = [f"un{i+1}" for i in range(len(df))]
+            unlabeled_df = df[important_features_type1].copy()
+            filtered_df = None
+            messagebox.showinfo("Success", "Data labeled as 'un1', 'un2', ... since no classification was found.")
+            return
         
-        labeled_data = cleaned_df[cleaned_df["target_classification"].str.strip() != ""].copy()
-        unlabeled_data = cleaned_df[cleaned_df["target_classification"].str.strip() == ""].copy()
+        # If target_classification exists, handle both labeled and unlabeled
+        df["target_classification"] = df["target_classification"].astype(str).str.replace(r"[; ]+", "-", regex=True)
+        df.loc[df["target_classification"].str.lower() == "nan", "target_classification"] = ""
         
+        labeled_data = df[df["target_classification"].str.strip() != ""].copy()
+        unlabeled_data = df[df["target_classification"].str.strip() == ""].copy()
+
         # Assign unique labels to the unlabeled data
         unlabeled_data["target_classification"] = [f"un{i+1}" for i in range(len(unlabeled_data))]
-        
+
         filtered_df = labeled_data[important_features_type1]
         unlabeled_df = unlabeled_data[important_features_type1]
-        
-        messagebox.showinfo("Success", "Data filtered! Now save the files.")
-    else:
-        messagebox.showerror("Error", "Column 'target_classification' not found!")
 
+        messagebox.showinfo("Success", "Data filtered and pseudo-labeled! Ready to save files.")
+
+    except Exception as e:
+        messagebox.showerror("Error", f"Failed to filter data:\n{e}")
+        
 def save_file():
     global filtered_df, unlabeled_df
     if filtered_df is None or unlabeled_df is None:
